@@ -1,0 +1,8 @@
+src/__pycache__
+src/keys
+src/ui.py
+
+venv/
+
+.env
+gridoon_avatar.jpg

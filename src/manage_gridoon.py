@@ -195,23 +195,25 @@ def send_server_command(commands, ip_address, username, private_key, docker_stat
     ssh_client.close()
 
 def main():
-    # Look for a Droplet named gridoon
-    gridoon_droplet = do_client.get_droplet(name="gridoon")
-    new_droplet = None
-    droplet_id = None
-    if gridoon_droplet:
-        droplet_id = gridoon_droplet["id"]
-    
     # Verify user and root SSH keys
     do_root_key, root_private_key, root_public_key = verify_keys(ROOT_KEY_NAME)
     do_user_key, user_private_key, user_public_key = verify_keys(USER_KEY_NAME)
 
+    # Set commands for rebuilding website
+    commands = rebuild_container_command
+
+    # Look for a Droplet named gridoon
+    gridoon_droplet = do_client.get_droplet(name="gridoon")        
+    
     if not gridoon_droplet: # If Droplet named "gridoon" does not exist
         # Put env vars in cloud_init config
         cloud_init = get_cloud_init(SERVER_USERNAME, SERVER_PASSWORD, ROOT_PASSWORD, user_public_key)
+        
+        # Set commands for building website
+        commands = get_bootstrap_website_command(GITHUB_USERNAME, GITHUB_TOKEN, EMAIL, DOMAIN)
 
         # Make new Droplet
-        new_droplet = do_client.make_droplet(
+        gridoon_droplet = do_client.make_droplet(
             name="gridoon",
             region="tor1",
             size="s-1vcpu-1gb",
@@ -220,7 +222,6 @@ def main():
             cloud_init=cloud_init
         )
 
-        droplet_id = new_droplet["id"]
         get_droplet_ip()
 
         print(f"Now would be a good time to update your DNS with the new droplet IP: {IP_ADDRESS}")
@@ -228,15 +229,13 @@ def main():
         send_server_command(wait_for_cloud_init, IP_ADDRESS, "root", root_private_key)
         print("Server ready")
 
+    droplet_id = gridoon_droplet["id"]
+
     print("Making the Droplet stronger so we can actually make the website")
     do_client.resize_with_power_cycle(droplet_id, "s-2vcpu-2gb")
 
-    print("Making website")
-    if gridoon_droplet:
-        send_server_command(rebuild_container_command, IP_ADDRESS, SERVER_USERNAME, user_private_key, docker_status=True, containers=containers)
-    if new_droplet:
-        commands = get_bootstrap_website_command(GITHUB_USERNAME, GITHUB_TOKEN, EMAIL, DOMAIN)
-        send_server_command(commands, IP_ADDRESS, SERVER_USERNAME, user_private_key, docker_status=True, containers=containers)
+    print("Building website")
+    send_server_command(commands, IP_ADDRESS, SERVER_USERNAME, user_private_key, docker_status=True, containers=containers)
 
     print("Making the Droplet weaker so we don't give digital ocean too much money")
     do_client.resize_with_power_cycle(droplet_id, "s-1vcpu-1gb")
